@@ -10,6 +10,7 @@
     "build": "tsc",
     "start": "node dist/index.js"
   },
+  "license": "MIT",
   "type": "module",
   "dependencies": {
     "@playzone/youtube-transcript": "^1.0.0"
