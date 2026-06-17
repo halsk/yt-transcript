@@ -5,6 +5,7 @@ import {
   formatTranscriptMechanical,
   formatTranscriptForOutput,
   parseSummaryResponse,
+  sanitizeFilename,
   type TranscriptSnippet,
 } from "./core.js";
 
@@ -278,5 +279,53 @@ describe("extractYouTubeUrl", () => {
 
   it("returns null for empty fields", () => {
     expect(extractYouTubeUrl({})).toBeNull();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// sanitizeFilename tests
+// ---------------------------------------------------------------------------
+
+describe("sanitizeFilename", () => {
+  it("returns short ASCII title unchanged", () => {
+    expect(sanitizeFilename("Hello World")).toBe("Hello World");
+  });
+
+  it("removes forbidden characters", () => {
+    const result = sanitizeFilename('title<>"with:forbidden/chars\\and|more?stuff*end');
+    expect(result).not.toMatch(/[<>:"/\\|?*#^[\]]/);
+  });
+
+  it("truncates long Japanese title to ≤ 252 bytes (UTF-8)", () => {
+    // 7 chars × 30 = 210 chars = 630 bytes — far exceeds 252-byte cap
+    const longTitle = "日本語タイトル".repeat(30);
+    const result = sanitizeFilename(longTitle);
+    expect(Buffer.byteLength(result, "utf8")).toBeLessThanOrEqual(252);
+  });
+
+  it("truncates at UTF-8 character boundary (no mojibake / no replacement char)", () => {
+    // 3 bytes per char × 100 = 300 bytes
+    const longTitle = "あ".repeat(100);
+    const result = sanitizeFilename(longTitle);
+    expect(result).not.toContain("�");
+    expect(Buffer.from(result, "utf8").toString("utf8")).toBe(result);
+  });
+
+  it("appending .md to truncated result stays within 255 bytes (Linux ext4 limit)", () => {
+    const longTitle = "日本語".repeat(50); // 150 chars = 450 bytes
+    const filename = sanitizeFilename(longTitle) + ".md";
+    expect(Buffer.byteLength(filename, "utf8")).toBeLessThanOrEqual(255);
+  });
+
+  it("does not truncate short Japanese title", () => {
+    const shortTitle = "短いタイトル"; // 6 chars = 18 bytes — well under 252
+    expect(sanitizeFilename(shortTitle)).toBe(shortTitle);
+  });
+
+  it("strips leading/trailing dots and normalises whitespace", () => {
+    // dots at the very start/end (with no leading/trailing spaces) are stripped
+    expect(sanitizeFilename("...hello world...")).toBe("hello world");
+    // multiple spaces are collapsed to one
+    expect(sanitizeFilename("hello   world")).toBe("hello world");
   });
 });
