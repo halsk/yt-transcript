@@ -319,13 +319,29 @@ export function parseSummaryResponse(text: string): { summary: string; tags: str
 }
 
 export function sanitizeFilename(name: string): string {
-  return name
+  const sanitized = name
     .replace(/[<>:"/\\|?*#^[\]]/g, "")
     .replace(/[\x00-\x1f\x7f]/g, "")
     .replace(/^\.+|\.+$/g, "")
     .replace(/\s+/g, " ")
-    .trim()
-    .slice(0, 200);
+    .trim();
+
+  // Cap at 252 bytes so that appending ".md" (3 bytes) stays within Linux 255-byte limit.
+  // Use byte-length check; Japanese characters are 3 bytes each, so the old
+  // .slice(0, 200) could produce up to 600 bytes and trigger ext4 truncation.
+  const MAX_BYTES = 252;
+  if (Buffer.byteLength(sanitized, "utf8") <= MAX_BYTES) {
+    return sanitized;
+  }
+
+  // Truncate at a UTF-8 character boundary to avoid mojibake.
+  // Buffer.toString("utf8") replaces any incomplete multi-byte sequence at
+  // the cut point with U+FFFD — strip those trailing replacement chars.
+  return Buffer.from(sanitized, "utf8")
+    .subarray(0, MAX_BYTES)
+    .toString("utf8")
+    .replace(/�+$/, "")
+    .trimEnd();
 }
 
 function escapeYamlString(s: string): string {
